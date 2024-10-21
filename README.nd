@@ -1,0 +1,92 @@
+A. Inroduction
+We develop a multithreaded network application to execute jobs given over the network by the user. The goal is to have worker threads take over the execution of jobs and return their results to the user according to a flow control mechanism.
+This mechanism is based on the current degree of parallelism (concurrency). For example, suppose that the degree of parallelism is 4. This means that 4 worker threads will be created to run the first 4 available jobs submitted to server (or as many as there are, if less than 4 have been submitted). The rest of the jobs that have been submitted will stay on a queue. If one task out of 4 terminate, then a worker thread should start executing the first job of the queue. If the degree of parallelism changes, the application adapts accordingly, without stopping already running jobs, in case of downgrading parallelism.
+
+Application offer its functionality to the user through 2 processes,
+1. jobCommander through which the user interacts with the application and
+2. jobExecutorServer that takes over the management and execution of the commands
+
+B. jobCommander
+jobCommander enables user to interact with the jobExecutorServer through simple commands, given as arguments against the jobCommander call and are sent over the internet to the jobExecutorServer. Specifically, jobCommander will take the following arguments:
+
+./jobCommmander [serverName] [portNum] [jobCommanderInputCommand]
+
+where:
+serverName: the domain name of the machine the jobExecutorServer is running on
+connected.
+portNum: port number that the jobExecutorServer is listening on
+jobCommanderInputCommand: one of the following commands
+1. issueJob <job>: Enters a new job (regular Unix command) into the system to be executed. jobExecutorServer assigns a unique identifier <jobID, job> to the job. The jobID's format is job_XX where XX is a sequential unique number (without leading zeros) that is incremented for each new job accepted by the jobExecutorServer. It returns mesage JOB <jobID, job> SUBMITTED to jobCommander
+
+2. setConcurrency <N>: This parameter sets the degree of parallelism, i.e. the maximum number of active threads (worker threads) that perform jobs at any given time. The default value is 1. The command can also be sent during execution of jobs and will change the behavior of the server from the moment it is received. It returns mesage CONCURRENCY SET AT N to jobCommander
+
+3. stop <jobID>: Removes the job with the given jobID from the running jobs bucket. (Unlike the first task, the stop command is only for jobs in the buffer. Already running jobs terminate normally). It returns mesage JOB <jobID> REMOVED or JOB <jobID> NOTFOUND to jobCommander
+
+4. poll: For each queued job, it returns the pair <jobID, job> which jobCommander prints (one per line) to the console. (As with the stop command, the poll command is only for operations on the buffer).
+
+5. exit: Terminates jobExecutorServer. It returns mesage SERVER TERMINATED to jobCommander.
+
+C. Multi-threaded network jobExecutorServer
+The multi-threaded network server (jobExecutorServer) runs from the command line as follows:
+jobExecutorServer [portnum] [bufferSize] [threadPoolSize]
+
+where
+1. portnum: the port number the server is listening on.
+2. bufferSize: the size of a buffer that hold customer data waiting to be served. Must be > 0.
+3. threadPoolSize: The total number of worker threads in the thread pool. 
+
+jobExecutorServer has 3 kinds of threads:
+1. main thread
+2. controller threads 
+3. worker threads
+
+1. main thread
+The original main thread create threadPoolSize worker threads. It listens for connections from jobCommander clients. When a jobCommander client connects, main thread creates a controller thread.
+
+2. controller threads
+Every time a connection is made, a new Controller thread starts, read the jobCommander client command from the connection and execute the command or insert into the shared buffer the job to execute.
+
+2.1. Controller thread for issueJob: Controller thread generates a unique jobID for the job the client is requesting to run and place in a buffer of a certain size the triple <jobID, job, clientSocket>, where jobID is the unique identifier for the job requested by the client, job is the specific job, and clientSocket is the file descriptor for the socket to communicate with the specific client. Controller thread returns to the client the message: JOB <jobID, job> SUBMITTED
+
+2.2. Controller thread for setConcurrency: Controller thread updates the value of a shared concurrencyLevel variable that initially has a value of 1. Controller thread returns to the client the message: CONCURRENCY SET AT N
+
+2.2. Controller thread for stop: If the request is stop <jobID>, controller thread removes the corresponding job from the shared queue and sends message JOB <jobID> REMOVED or JOB <jobID> NOTFOUND to the client.
+
+2.3. Controller thread function for poll: Controller thread runs through the shared buffer, collects the <jobID, job> pairs of the client-specific commands, and returns them to the client in a message.
+
+2.4. Controller thread function for exit: Controller thread terminates the jobExecutorServer. JobExecutorServer termination occur after all running jobs have completed and returned their outputs to the respective client. The buffer is emptied without executing waiting jobs and clients informed with the message SERVER TERMINATED BEFORE EXECUTION.
+
+3. worker threads
+The goal of worker threads is:
+1. read jobs from the shared buffer (placed there from controller thread),
+2. run jobs
+3. send command output to clients.
+A worker thread wakes up when there is at least one <jobID, job, clientSocket> triple in the buffer. It checks if the current concurrency level allows it to remove and execute a job from the buffer. If allowed, he removes a triplet from the accumulator and executes it. It calls the fork() system call
+
+The child process does two things:
+First it creates a new file named "pid.output" where pid is the child process id. Then, it via dup2() call the STDOUT file descriptor (1) points to the new file. Finally, it calls the exec*(), to run the command and the output will be saved in the pid.output file.
+
+The parent process wait for the child process to terminate. Then, it reads the pid.out file and send the contents to the client via the clientSocket file descriptor. For clarity of the results, it adds before and after the output the jobId (start/end) identifier as shown below.
+-----jobID output start------
+-----jobID output end------
+After it finishes transferring the file to the client, it closes the clientSocket and removes the pid.output file.
+
+D. Content of the project
+File: jobExecutorServer.c: Contains source code for the multithreaded Server and the shared queue.
+File: jobCommander.c: Contains source code for the job commander (client)multithreaded Server
+File: Makefile: Contains compiling commands.
+
+The anatomy of folder hierrarchy is:
+
+subfolder bin: 		Contains executable files jobCommander, jobExecutorServer progDelay (executable from first assignment for testing purposes (see tests/test1.txt))
+subfolder build: 	Contains .o files produced from compiling
+subfolder include: 	Contains nothing (no personal include file used)
+subfolder lib: 		Contains nothing (no lib used)
+subfolder src: 		Contains files jobCommander.c, jobExecutorServer.c
+subfolder test: 	Contains one test file
+
+E. How to use
+
+First run Makefile in the main folder
+run ./bin/jobExecutorServer (as described) (on a window)
+run ./bin/jobCommander (as described) (on another window)
