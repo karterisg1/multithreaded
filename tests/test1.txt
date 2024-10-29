@@ -1,9 +1,0 @@
-./bin/jobCommander linux01.di.uoa.gr 7859 issueJob ls -l /home/users/nikosp/SysPro2024Data
-./bin/jobCommander linux01.di.uoa.gr 7859 setConcurrency 2
-./bin/jobCommander linux01.di.uoa.gr 7859 issueJob wget http://rhodes.mm.di.uoa.gr:8888/others/genome/chr19.fa
-./bin/jobCommander linux01.di.uoa.gr 7859 issueJob grep "AATGGG" /home/users/nikosp/SysPro2024Data/gene.fasta
-./bin/jobCommander linux01.di.uoa.gr 7859 issueJob cat /home/users/nikosp/SysPro2024Data/gene.fasta
-./bin/jobCommander linux01.di.uoa.gr 7859 issueJob ./bin/progDelay 5
-./bin/jobCommander linux01.di.uoa.gr 7859 poll
-./bin/jobCommander linux01.di.uoa.gr 7859 stop job_1
-./bin/jobCommander linux01.di.uoa.gr 7859 exit
